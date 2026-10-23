@@ -1,0 +1,148 @@
+{
+  "policy_id": "jevgate-default",
+  "version": "2026-10-23",
+  "bands": {
+    "high": {"yes": 0.7, "no": 0.1},
+    "standard": {"yes": 0.7, "no": 0.3}
+  },
+  "expedite": {"signal": "urgency", "at_least": 2, "probability": 0.5},
+  "risk_weights": {
+    "scores": {"sensitivity": 0.4, "urgency": 0.2},
+    "rules": 0.4,
+    "stakes": {"high": 1.0, "standard": 0.6}
+  },
+  "conditions": {
+    "external_audience": {
+      "signal": "intended_audience",
+      "test": "in",
+      "value": ["partner_government", "public_release"],
+      "proposition": "The document is written for, or about to be shared with, readers outside the institution: a partner government, the press, or the public."
+    },
+    "public_audience": {
+      "signal": "intended_audience",
+      "test": "in",
+      "value": ["public_release"],
+      "proposition": "The document is written for, or about to be shared with, the press or the general public."
+    },
+    "restricted": {
+      "signal": "sensitivity",
+      "test": "at_least",
+      "value": 3,
+      "proposition": "Disclosing the document outside the institution could endanger people or compromise security or a negotiation."
+    },
+    "staff_movements": {
+      "signal": "movement_details",
+      "test": "yes",
+      "proposition": "The document discloses travel itineraries, accommodation, routes, or security arrangements for named staff or delegations."
+    },
+    "negotiating_position": {
+      "signal": "negotiating_position",
+      "test": "yes",
+      "proposition": "The document states the institution's negotiating position, red lines, or fallback terms."
+    },
+    "personal_data": {
+      "signal": "personal_data",
+      "test": "yes",
+      "proposition": "The document contains personal data about an identifiable individual, such as a personal phone number, home address, passport or ID number, or health information."
+    },
+    "security_incident": {
+      "signal": "security_incident",
+      "test": "yes",
+      "proposition": "The document reports a security, safety, or data-breach incident."
+    },
+    "financial_commitment": {
+      "signal": "financial_commitment",
+      "test": "yes",
+      "proposition": "The document commits the institution to spend, transfer, or guarantee funds."
+    },
+    "legal_exposure": {
+      "signal": "legal_exposure",
+      "test": "yes",
+      "proposition": "The document mentions litigation, sanctions, export controls, or a regulatory investigation involving the institution."
+    },
+    "foreign_official_named": {
+      "signal": "foreign_official_named",
+      "test": "yes",
+      "proposition": "The document names a specific official of a foreign or host government."
+    },
+    "release_requested": {
+      "signal": "release_requested",
+      "test": "yes",
+      "proposition": "The document asks for itself or its contents to be shared outside the institution."
+    }
+  },
+  "rules": [
+    {
+      "rule_id": "P1",
+      "title": "Staff movements leaving the institution",
+      "action": "BLOCK",
+      "office": "security_desk",
+      "stakes": "high",
+      "when": ["staff_movements", "external_audience"],
+      "rationale": "Itineraries and security arrangements for staff are never shared outside the institution."
+    },
+    {
+      "rule_id": "P2",
+      "title": "Release request for restricted material",
+      "action": "BLOCK",
+      "office": "records_officer",
+      "stakes": "high",
+      "when": ["restricted", "release_requested"],
+      "rationale": "Restricted material needs declassification by the records officer before any release."
+    },
+    {
+      "rule_id": "P3",
+      "title": "Negotiating position leaving the institution",
+      "action": "BLOCK",
+      "office": "mission_lead",
+      "stakes": "high",
+      "when": ["negotiating_position", "external_audience"],
+      "rationale": "Red lines and fallback terms shared outside the institution weaken the negotiation."
+    },
+    {
+      "rule_id": "P4",
+      "title": "Personal data leaving the institution",
+      "action": "ROUTE",
+      "office": "privacy_office",
+      "stakes": "high",
+      "when": ["personal_data", "external_audience"],
+      "rationale": "The privacy office checks the legal basis for any external transfer of personal data."
+    },
+    {
+      "rule_id": "P5",
+      "title": "Security or safety incident",
+      "action": "ROUTE",
+      "office": "security_desk",
+      "stakes": "high",
+      "when": ["security_incident"],
+      "rationale": "Every incident report goes to the security desk, wherever it was filed."
+    },
+    {
+      "rule_id": "P6",
+      "title": "Financial commitment",
+      "action": "ROUTE",
+      "office": "finance_approver",
+      "stakes": "standard",
+      "when": ["financial_commitment"],
+      "rationale": "Commitments of funds need a delegated finance approver."
+    },
+    {
+      "rule_id": "P7",
+      "title": "Legal or regulatory exposure",
+      "action": "ROUTE",
+      "office": "legal_counsel",
+      "stakes": "standard",
+      "when": ["legal_exposure"],
+      "rationale": "Counsel reviews anything touching litigation, sanctions, or export controls."
+    },
+    {
+      "rule_id": "P8",
+      "title": "Foreign official named in a public release",
+      "action": "ROUTE",
+      "office": "protocol_office",
+      "stakes": "standard",
+      "when": ["foreign_official_named", "public_audience"],
+      "rationale": "Protocol confirms titles and consent before a foreign official is named publicly."
+    }
+  ]
+}
