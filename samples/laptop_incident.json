@@ -1,0 +1,7 @@
+{
+  "designed_for": "ROUTED -> security_desk, EXPEDITE",
+  "metadata": {
+    "source_unit": "field_office_calder"
+  },
+  "document": "INCIDENT REPORT - filed 23 October, 08:05\n\nAt about 22:30 last night an office laptop was taken from a staff vehicle parked outside the field office. The laptop holds the regional contact database, including personal phone numbers of partner-agency staff. The disk is encrypted but the device was in sleep mode, not shut down.\nPolice report filed (ref. CPD-88213). We have not yet revoked the device's VPN certificate. Requesting the security desk's instructions this morning."
+}
