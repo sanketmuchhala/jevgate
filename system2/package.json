@@ -1,0 +1,24 @@
+{
+  "name": "jevgate-system2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "System-2 reviewer for JevGate: rules on propositions System-1 left uncertain, via the Vercel AI SDK",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=../.env src/server.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@openrouter/ai-sdk-provider": "3.1.0",
+    "ai": "7.0.137",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}
