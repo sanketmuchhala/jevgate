@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .audit_schemas import AuditEvent, ReviewerIdentity
 from .workbench_schemas import (
     CaseDetail, CaseVersionDetail, RuleDispositionRecord,
 )
@@ -58,6 +59,8 @@ class CaseStore:
                 event_type TEXT, actor TEXT, payload_json TEXT, created_at TEXT,
                 FOREIGN KEY (case_id) REFERENCES cases(case_id)
             );
+            CREATE INDEX IF NOT EXISTS audit_events_case_time
+                ON audit_events(case_id, created_at, event_id);
         """)
 
     @contextmanager
@@ -146,3 +149,45 @@ class CaseStore:
             "INSERT INTO audit_events VALUES (?, ?, ?, ?, ?, ?, ?)",
             (uuid.uuid4().hex, case_id, version, event_type, actor, json.dumps(payload), utc_now()),
         )
+
+    def list_audit_events(self, case_id: str, *, version: int | None = None,
+                         limit: int = 100, offset: int = 0) -> list[AuditEvent]:
+        if not 1 <= limit <= 200 or offset < 0:
+            raise ValueError("Audit pagination requires limit 1..200 and offset >= 0")
+        with self._lock:
+            if self.connection.execute("SELECT 1 FROM cases WHERE case_id = ?", (case_id,)).fetchone() is None:
+                raise CaseNotFound("Case not found")
+            if version is not None and self.connection.execute(
+                "SELECT 1 FROM case_versions WHERE case_id = ? AND version_number = ?", (case_id, version),
+            ).fetchone() is None:
+                raise CaseNotFound("Case version not found")
+            query = "SELECT * FROM audit_events WHERE case_id = ?"
+            params: list[object] = [case_id]
+            if version is not None:
+                query += " AND version_number = ?"
+                params.append(version)
+            query += " ORDER BY created_at, event_id LIMIT ? OFFSET ?"
+            rows = self.connection.execute(query, [*params, limit, offset]).fetchall()
+            return [AuditEvent(**{k: row[k] for k in AuditEvent.model_fields if k != "payload"},
+                               payload=json.loads(row["payload_json"])) for row in rows]
+
+    def list_reviewers(self) -> list[ReviewerIdentity]:
+        """Observed reviewer names, retained in audit history even after a disposition changes."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT actor, payload_json, created_at FROM audit_events "
+                "WHERE event_type IN ('RULE_DISPOSITION_UPDATED', 'CASE_UPDATED') "
+                "ORDER BY created_at, event_id",
+            )
+            identities: dict[tuple[str, str | None], ReviewerIdentity] = {}
+            for row in rows:
+                reviewer = row["actor"].strip()
+                if not reviewer:
+                    continue
+                payload = json.loads(row["payload_json"])
+                # assigned_office describes the assignee, not the acting reviewer's office.
+                office = payload.get("office")
+                identities[reviewer, office] = ReviewerIdentity(
+                    reviewer=reviewer, office=office, last_seen_at=row["created_at"],
+                )
+            return sorted(identities.values(), key=lambda r: (r.reviewer.casefold(), r.office or ""))

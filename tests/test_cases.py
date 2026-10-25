@@ -96,6 +96,14 @@ class CaseTests(unittest.TestCase):
         self.assertEqual(case["active_version"]["evidence_spans"], [])
         self.assertEqual(len(self.s2.requests), 1)
 
+    def test_evidence_offsets_locate_quote_after_document_prefix(self):
+        prefix = "Administrative preamble.\n\n"
+        case = self.create(document=prefix + DOCUMENT)
+        span, = case["active_version"]["evidence_spans"]
+        self.assertEqual(span["start_char"], len(prefix))
+        self.assertEqual(span["end_char"], len(prefix) + len(QUOTE) - 1)
+        self.assertEqual(span["quote"], "The delegation travels by motorcade to Hotel Arden")
+
     def test_existing_triage_quotes_are_used_without_resending(self):
         self.s1.sigs = signals(movement_details=0.5)
         case = self.create()

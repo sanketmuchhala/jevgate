@@ -5,3 +5,8 @@ venv/
 .env
 node_modules/
 .DS_Store
+data/
+outputs/
+*.db
+*.db-shm
+*.db-wal

@@ -4,6 +4,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from .calibration import p_at_least
+from .grounding import is_grounded_quote
 from .policy import evaluate_rules, risk_index
 from .schemas import (
     DiscardedVerdict, Escalation, Policy, Proposition, QuestionSpec, ReviewRequest, ReviewResponse, RuleResult,
@@ -58,8 +59,7 @@ def _normalize(text: str) -> str:
 
 def is_grounded(evidence: str, document: str) -> bool:
     """A 'yes' must quote the document. Paraphrase or invention does not count."""
-    quote = _normalize(evidence).strip("\"'. ")
-    return len(quote) >= MIN_EVIDENCE_CHARS and quote in _normalize(document)
+    return is_grounded_quote(evidence, document, MIN_EVIDENCE_CHARS)
 
 
 def apply_review(
