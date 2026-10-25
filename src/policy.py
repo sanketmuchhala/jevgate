@@ -123,6 +123,8 @@ def evaluate_rules(
     policy: Policy,
     signals: Mapping[str, Signal],
     overrides: Mapping[str, Truth] | None = None,
+    *,
+    context_floors: Mapping[str, float] | None = None,
 ) -> list[RuleResult]:
     """Evaluate every rule. `overrides` holds System-2 rulings on conditions System-1 left UNCERTAIN.
 
@@ -136,9 +138,12 @@ def evaluate_rules(
         conditions: list[ConditionResult] = []
         for cid in rule.when:
             cond = policy.conditions[cid]
-            p = condition_probability(cond, signals[cond.signal])
+            jev_p = condition_probability(cond, signals[cond.signal])
+            p = max(jev_p, (context_floors or {}).get(cid, jev_p))
             truth = band_truth(p, band)
             resolved_by = None if truth is Truth.UNCERTAIN else "SYSTEM_ONE"
+            if p > jev_p and truth is not Truth.UNCERTAIN and band_truth(jev_p, band) is not Truth.TRUE:
+                resolved_by = "USER_CONTEXT"
             override = overrides.get(cid)
             if truth is Truth.UNCERTAIN and override is not None:
                 if override is Truth.TRUE or (override is Truth.FALSE and rule.stakes == "standard"):

@@ -98,6 +98,24 @@ class RuleEvaluationTests(unittest.TestCase):
         self.assertIs(p6.truth, Truth.TRUE)
         self.assertEqual(p6.conditions[0].resolved_by, "SYSTEM_ONE")
 
+    def test_context_floor_cannot_lower_text_probability(self):
+        results = evaluate_rules(self.policy, signals(financial_commitment=0.95),
+                                 context_floors={"financial_commitment": 0.0})
+        c = rule(results, "P6").conditions[0]
+        self.assertEqual((c.truth, c.probability, c.resolved_by), (Truth.TRUE, 0.95, "SYSTEM_ONE"))
+
+    def test_floor_preserves_system_one_attribution_when_already_true(self):
+        results = evaluate_rules(self.policy, signals(financial_commitment=0.95),
+                                 context_floors={"financial_commitment": 1.0})
+        c = rule(results, "P6").conditions[0]
+        self.assertEqual((c.probability, c.resolved_by), (1.0, "SYSTEM_ONE"))
+
+    def test_uncertain_floor_does_not_claim_context_resolution(self):
+        results = evaluate_rules(self.policy, signals(financial_commitment=0.02),
+                                 context_floors={"financial_commitment": 0.5})
+        c = rule(results, "P6").conditions[0]
+        self.assertEqual((c.truth, c.resolved_by), (Truth.UNCERTAIN, None))
+
 
 if __name__ == "__main__":
     unittest.main()

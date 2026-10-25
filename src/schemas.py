@@ -140,7 +140,7 @@ class Truth(str, Enum):
     UNCERTAIN = "UNCERTAIN"
 
 
-ResolvedBy = Literal["SYSTEM_ONE", "SYSTEM_TWO"]
+ResolvedBy = Literal["SYSTEM_ONE", "SYSTEM_TWO", "USER_CONTEXT"]
 
 
 class ConditionResult(BaseModel):
