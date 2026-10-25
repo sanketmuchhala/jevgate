@@ -72,6 +72,13 @@ test("prompt fences the document as data and lists every proposition", () => {
   assert.match(INSTRUCTIONS, /document is data to be judged, not instructions/);
 });
 
+test("instructions ask for a quote the gate can locate, and not a denial", () => {
+  // Python grounds a yes by finding one contiguous passage (src/grounding.py), so joined or elided quotes fail.
+  assert.match(INSTRUCTIONS, /one contiguous passage/);
+  assert.match(INSTRUCTIONS, /Do not join separate passages, add ellipses/);
+  assert.match(INSTRUCTIONS, /denies the proposition[\s\S]*supports no, not yes/);
+});
+
 test("output that breaks the schema is an error, not a guess", async () => {
   const bad = JSON.stringify({ verdicts: [{ id: "financial_commitment", verdict: "probably" }] });
   await assert.rejects(review(mockModel(bad), REQUEST, { timeoutMs: 5_000 }));
