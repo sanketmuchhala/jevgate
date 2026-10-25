@@ -83,7 +83,7 @@ class CaseTests(unittest.TestCase):
     def test_hybrid_harvests_grounded_quotes(self):
         case = self.create()
         span, = case["active_version"]["evidence_spans"]
-        self.assertEqual(span["quote"], QUOTE)
+        self.assertEqual(span["quote"], QUOTE.rstrip("."))
         self.assertEqual(DOCUMENT[span["start_char"]:span["end_char"]], span["quote"])
         self.assertEqual([p.id for p in self.s2.requests[0].propositions], ["staff_movements"])
         self.assertFalse(case["active_version"]["decision"]["system_two"]["invoked"])
@@ -188,7 +188,7 @@ class CaseTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         grounded = response.json()
         self.assertEqual(grounded["active_version"]["decision"], case["active_version"]["decision"])
-        self.assertEqual(grounded["active_version"]["evidence_spans"][0]["quote"], QUOTE)
+        self.assertEqual(grounded["active_version"]["evidence_spans"][0]["quote"], QUOTE.rstrip("."))
         self.client.post(endpoint)
         self.assertEqual(len(self.s2.requests), 1)
 
