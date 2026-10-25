@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>JevGate Reviewer Workbench</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#case-view">Skip to case</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">JG</span>
+      <span class="brand-name">JevGate</span>
+      <span class="brand-sub">Reviewer Workbench</span>
+    </div>
+    <button type="button" class="policy-chip" id="policy-chip" aria-haspopup="dialog">Loading policy…</button>
+    <form class="identity" id="identity-form" aria-label="Reviewer identity">
+      <label class="field inline">
+        <span>Reviewer handle</span>
+        <input id="reviewer-handle" name="reviewer" autocomplete="username" maxlength="120" placeholder="e.g. a.quist" required>
+      </label>
+      <label class="field inline">
+        <span>Acting office</span>
+        <select id="acting-office" name="office"></select>
+      </label>
+    </form>
+    <button type="button" class="btn primary" id="new-case-button">New case</button>
+  </header>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+  <main class="layout">
+    <aside class="queue" aria-labelledby="queue-heading">
+      <div class="queue-head">
+        <h2 id="queue-heading">Case queue</h2>
+        <button type="button" class="btn ghost small" id="refresh-button">Refresh</button>
+      </div>
+      <form class="filters" id="filters" aria-label="Filter cases">
+        <label class="field">
+          <span>Human status</span>
+          <select name="status">
+            <option value="">All statuses</option>
+            <option value="OPEN">Open</option>
+            <option value="CHANGES_REQUESTED">Changes requested</option>
+            <option value="APPROVED_BY_HUMAN">Approved by human</option>
+            <option value="BLOCKED_FINAL">Blocked (final)</option>
+            <option value="CLEARED_BY_MACHINE">Cleared by machine</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Machine verdict</span>
+          <select name="verdict">
+            <option value="">All verdicts</option>
+            <option value="BLOCKED">Blocked</option>
+            <option value="ROUTED">Routed</option>
+            <option value="HUMAN_REVIEW">Human review</option>
+            <option value="CLEARED">Cleared</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Office</span>
+          <select name="office"><option value="">All offices</option></select>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="expedite">
+          <span>Expedite only</span>
+        </label>
+      </form>
+      <p class="queue-count" id="queue-count" aria-live="polite"></p>
+      <ul class="case-list" id="case-list"></ul>
+    </aside>
+
+    <section class="case-view" id="case-view" tabindex="-1" aria-label="Case review">
+      <div class="empty-state">
+        <h2>No case selected</h2>
+        <p>Pick a case from the queue, or submit a document for triage.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="modal" id="new-case-dialog" aria-labelledby="new-case-title">
+    <form method="dialog" class="modal-body" id="new-case-form">
+      <header class="modal-head">
+        <h2 id="new-case-title">Submit a document for triage</h2>
+        <button type="button" class="btn ghost small" data-close>Close</button>
+      </header>
+
+      <label class="field">
+        <span>Load preset scenario</span>
+        <select id="preset-select" name="preset"><option value="">Blank document</option></select>
+      </label>
+
+      <label class="field">
+        <span>Title</span>
+        <input name="title" required maxlength="300" placeholder="Short description for the queue">
+      </label>
+
+      <label class="field">
+        <span>Document</span>
+        <textarea name="document" required maxlength="100000" rows="9" spellcheck="false"
+                  placeholder="Paste the full text exactly as it would be shared."></textarea>
+      </label>
+
+      <fieldset class="context-fields">
+        <legend>Submission context</legend>
+        <p class="hint">An explicit external audience or release request is applied as a floor on that condition. "Infer" leaves it to System-1.</p>
+        <div class="grid-2">
+          <label class="field">
+            <span>Intended audience</span>
+            <select name="intended_audience">
+              <option value="infer">Infer from the document</option>
+              <option value="internal_team">Internal team</option>
+              <option value="institution_wide">Institution-wide</option>
+              <option value="partner_government">Partner government</option>
+              <option value="public_release">Public release</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Release requested</span>
+            <select name="release_requested">
+              <option value="">Infer from the document</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Proposed action</span>
+            <input name="proposed_action" maxlength="200" placeholder="e.g. share_with_ministry">
+          </label>
+          <label class="field">
+            <span>Source unit</span>
+            <input name="source_unit" maxlength="120" placeholder="e.g. procurement">
+          </label>
+        </div>
+        <label class="field">
+          <span>Purpose</span>
+          <input name="purpose" maxlength="500" placeholder="Why is this document being shared or reviewed?">
+        </label>
+      </fieldset>
+
+      <fieldset class="mode-fields">
+        <legend>Pipeline</legend>
+        <label class="radio"><input type="radio" name="mode" value="hybrid" checked> <span><strong>Hybrid</strong>: System-2 reviews open conditions</span></label>
+        <label class="radio"><input type="radio" name="mode" value="fast"> <span><strong>Fast</strong>: System-1 only; open conditions go to a person</span></label>
+      </fieldset>
+
+      <footer class="modal-foot">
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="submit" class="btn primary" value="submit">Submit for triage</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal wide" id="policy-dialog" aria-labelledby="policy-title">
+    <div class="modal-body">
+      <header class="modal-head">
+        <h2 id="policy-title">Policy</h2>
+        <button type="button" class="btn ghost small" data-close>Close</button>
+      </header>
+      <div id="policy-content"></div>
+    </div>
+  </dialog>
+
+  <dialog class="modal" id="token-dialog" aria-labelledby="token-title">
+    <form method="dialog" class="modal-body" id="token-form">
+      <header class="modal-head">
+        <h2 id="token-title">API token required</h2>
+      </header>
+      <p>This server requires a bearer token for case endpoints. It is kept for this browser tab only.</p>
+      <label class="field">
+        <span>Bearer token</span>
+        <input name="token" type="password" autocomplete="off" required>
+      </label>
+      <footer class="modal-foot">
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save token</button>
+      </footer>
+    </form>
+  </dialog>
+</body>
+</html>
