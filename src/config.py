@@ -15,6 +15,8 @@ class Settings(BaseModel):
     system2_url: str | None = Field(default=None, description="Base URL of the system2/ reviewer; unset disables it")
     system2_timeout_s: float = Field(default=20.0, gt=0)
     policy_path: Path = DEFAULT_POLICY_PATH
+    db_path: Path = Field(default_factory=lambda: Path(os.environ.get("JEVGATE_DB_PATH", ":memory:")))
+    api_token: str | None = Field(default_factory=lambda: os.environ.get("JEVGATE_API_TOKEN"))
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -27,5 +29,7 @@ class Settings(BaseModel):
             "system2_url": os.getenv("SYSTEM2_URL"),
             "system2_timeout_s": os.getenv("SYSTEM2_TIMEOUT_S"),
             "policy_path": os.getenv("JEVGATE_POLICY"),
+            "db_path": os.getenv("JEVGATE_DB_PATH"),
+            "api_token": os.getenv("JEVGATE_API_TOKEN"),
         }
         return cls(**{k: v for k, v in env.items() if v})

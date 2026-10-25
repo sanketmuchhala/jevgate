@@ -91,7 +91,7 @@ def apply_review(
         elif v.verdict == "no":
             # evaluate_rules applies FALSE to standard-stakes rules only.
             overrides[v.id] = Truth.FALSE
-            if open_stakes[v.id] == {"high"}:
+            if "high" in open_stakes[v.id]:
                 discarded.append(DiscardedVerdict(
                     id=v.id, reason="HIGH_STAKES_NO", detail="a reviewer 'no' cannot clear a high-stakes rule",
                 ))
@@ -137,6 +137,7 @@ async def triage(
     battery: Mapping[str, QuestionSpec],
     system_one: SystemOne,
     system_two: SystemTwo | None,
+    context_floors: Mapping[str, float] | None = None,
 ) -> TriageDecision:
     started = time.perf_counter()
     decision_id = uuid.uuid4().hex
@@ -155,7 +156,7 @@ async def triage(
         )
 
     policy_started = time.perf_counter()
-    rules = evaluate_rules(policy, s1.signals)
+    rules = evaluate_rules(policy, s1.signals, context_floors=context_floors)
     policy_ms = _ms(policy_started)
 
     report = SystemTwoReport(invoked=False)
@@ -176,7 +177,7 @@ async def triage(
                     document=request.document, metadata=request.metadata, propositions=propositions,
                 ))
                 overrides, discarded = apply_review(review, propositions, open_stakes, request.document)
-                rules = evaluate_rules(policy, s1.signals, overrides)
+                rules = evaluate_rules(policy, s1.signals, overrides, context_floors=context_floors)
                 report = SystemTwoReport(
                     invoked=True, model=review.model, propositions=propositions,
                     verdicts=review.verdicts, discarded=discarded,

@@ -104,6 +104,15 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((d.verdict, d.review_offices), (Verdict.HUMAN_REVIEW, ["security_desk"]))
         self.assertEqual([x.reason for x in d.system_two.discarded], ["HIGH_STAKES_NO"])
 
+    async def test_shared_condition_no_clears_standard_but_preserves_high_stakes_trace(self):
+        self.policy.rules[5].when = ["security_incident"]
+        s2 = FakeSystemTwo([{"id": "security_incident", "verdict": "no"}])
+        d = await self.run_triage(signals(security_incident=0.5), s2)
+        self.assertEqual(condition(d, "P6", "security_incident").truth, Truth.FALSE)
+        self.assertEqual(condition(d, "P5", "security_incident").truth, Truth.UNCERTAIN)
+        self.assertEqual([x.reason for x in d.system_two.discarded], ["HIGH_STAKES_NO"])
+        self.assertIn("cannot clear a high-stakes rule", d.escalations[-1].detail)
+
     async def test_reviewer_can_confirm_a_high_stakes_block(self):
         doc = "Delegation lands 14:10 at Terminal 2; motorcade route via the north bridge to the Hotel Arden."
         s2 = FakeSystemTwo([{"id": "staff_movements", "verdict": "yes",
