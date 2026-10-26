@@ -112,6 +112,13 @@ async function waitFor(condition, label, timeout = 8000) {
 async function goto(path) {
   await send('Page.navigate', { url: BASE + path });
   await waitFor(`document.readyState === 'complete'`, 'page load');
+  // Moving between cases only changes the hash, so the previous case stays on screen until the new one
+  // loads. Wait for the requested case and its audit trail, or checks can pass against the old case.
+  const caseParam = new URLSearchParams(path.split('#')[1] || '').get('case');
+  if (caseParam) {
+    await waitFor(`document.querySelector('.case-sub')?.textContent.startsWith(${JSON.stringify(`Case ${caseParam.slice(0, 8)} `)})
+      && document.querySelector('#audit-trail') && !document.querySelector('#audit-trail').textContent.includes('Loading history')`, `case ${caseParam}`);
+  }
 }
 async function shot(name) {
   if (!SHOTS) return;
@@ -233,7 +240,7 @@ try {
   await shot('03-new-case');
   await js(`const f = document.querySelector('#new-case-form'); f.requestSubmit(f.querySelector('[type=submit]')); return true;`);
   await waitFor(`!document.querySelector('#new-case-dialog').open && document.querySelector('.case-title')?.textContent === 'Procurement STEP Payment Release Minutes'`, 'new case');
-  check(await js(`return document.querySelectorAll('#case-list .case-item').length;`) === 9, 'the new case joins the queue');
+  check(await waitFor(`document.querySelectorAll('#case-list .case-item').length === 9`, 'queue refresh'), 'the new case joins the queue');
   check(await js(`return document.querySelectorAll('#document-viewer mark').length;`) === 0, 'fast mode stores no quotes');
   await js(`document.querySelector('.callout button').click(); return true;`);
   await waitFor(`document.querySelectorAll('#document-viewer mark').length === 1`, 'extracted quote');
