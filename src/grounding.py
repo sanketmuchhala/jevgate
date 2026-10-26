@@ -10,7 +10,7 @@ _TOKEN = re.compile(r"(?P<space>\s+)|.", re.DOTALL)
 
 
 def _normalize(text: str) -> str:
-    """Same as src/router.py:_normalize, so a located span and the router's check agree."""
+    """Straighten curly quotes, collapse whitespace, fold case. The router grounds through this module."""
     text = text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
     return re.sub(r"\s+", " ", text).strip().casefold()
 

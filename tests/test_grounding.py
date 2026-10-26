@@ -1,7 +1,7 @@
 import random
 import unittest
-from src.grounding import find_quote_span, is_grounded_quote, normalize_with_offsets
-from src.router import _normalize, is_grounded
+from src.grounding import MIN_EVIDENCE_CHARS, _normalize, find_quote_span, is_grounded_quote, normalize_with_offsets
+from src.router import is_grounded
 
 DOC = (
     "Minutes, procurement working group. The group agreed to sign the cold-chain contract with "
@@ -11,6 +11,12 @@ DOC = (
 
 def stripped(evidence: str) -> str:
     return _normalize(evidence).strip("\"'. ")
+
+
+def substring_grounded(evidence: str, document: str) -> bool:
+    """The router's check before it delegated to src/grounding.py, kept as an independent reference."""
+    quote = stripped(evidence)
+    return len(quote) >= MIN_EVIDENCE_CHARS and quote in _normalize(document)
 
 
 class FindQuoteSpanTests(unittest.TestCase):
@@ -85,11 +91,11 @@ class FindQuoteSpanTests(unittest.TestCase):
         start, end = self.assert_span("release the first payment", doc, "release the first payment")
         self.assertEqual(start, doc.index("release"))
 
-    def test_agrees_with_the_router_on_its_own_cases(self):
+    def test_router_gate_keeps_the_substring_rule(self):
         doc = "Cable 14. The Minister’s office confirmed the visit."
         for evidence in ("the minister's office confirmed", "“confirmed the visit.”", "the minister cancelled the visit",
                          "visit", "release the first payment"):
-            self.assertEqual(is_grounded_quote(evidence, doc), is_grounded(evidence, doc), evidence)
+            self.assertEqual(is_grounded(evidence, doc), substring_grounded(evidence, doc), evidence)
 
 
 class PropertyTests(unittest.TestCase):
@@ -98,7 +104,7 @@ class PropertyTests(unittest.TestCase):
     def random_document(self, rng: random.Random, extra: list[str]) -> str:
         return "".join(rng.choices(self.ALPHABET + extra, k=rng.randint(20, 120)))
 
-    def test_normalized_document_matches_the_router(self):
+    def test_offset_normalization_matches_the_plain_normalizer(self):
         rng = random.Random(20261025)
         for _ in range(500):
             doc = self.random_document(rng, ["ß", "İ", "ﬁ", "Σ", "ς"])
@@ -106,7 +112,7 @@ class PropertyTests(unittest.TestCase):
             self.assertEqual(normalized.strip(), _normalize(doc))
             self.assertEqual(len(normalized), len(offsets))
 
-    def test_every_located_span_round_trips_and_agrees_with_the_router(self):
+    def test_every_located_span_round_trips_and_agrees_with_the_substring_rule(self):
         rng = random.Random(1024)
         located = 0
         for _ in range(2000):
@@ -114,7 +120,7 @@ class PropertyTests(unittest.TestCase):
             a, b = sorted(rng.sample(range(len(doc) + 1), 2))
             evidence = doc[a:b]
             span = find_quote_span(evidence, doc)
-            self.assertEqual(span is not None, is_grounded(evidence, doc), repr((evidence, doc)))
+            self.assertEqual(span is not None, substring_grounded(evidence, doc), repr((evidence, doc)))
             if span is not None:
                 located += 1
                 self.assertEqual(_normalize(doc[span[0]:span[1]]), stripped(evidence))
