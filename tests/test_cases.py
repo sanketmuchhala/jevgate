@@ -83,7 +83,7 @@ class CaseTests(unittest.TestCase):
     def test_hybrid_harvests_grounded_quotes(self):
         case = self.create()
         span, = case["active_version"]["evidence_spans"]
-        self.assertEqual(span["quote"], QUOTE)
+        self.assertEqual(span["quote"], QUOTE.rstrip("."))
         self.assertEqual(DOCUMENT[span["start_char"]:span["end_char"]], span["quote"])
         self.assertEqual([p.id for p in self.s2.requests[0].propositions], ["staff_movements"])
         self.assertFalse(case["active_version"]["decision"]["system_two"]["invoked"])
@@ -95,6 +95,14 @@ class CaseTests(unittest.TestCase):
         self.assertEqual(condition(case, "P1", "staff_movements")["truth"], "TRUE")
         self.assertEqual(case["active_version"]["evidence_spans"], [])
         self.assertEqual(len(self.s2.requests), 1)
+
+    def test_evidence_offsets_locate_quote_after_document_prefix(self):
+        prefix = "Administrative preamble.\n\n"
+        case = self.create(document=prefix + DOCUMENT)
+        span, = case["active_version"]["evidence_spans"]
+        self.assertEqual(span["start_char"], len(prefix))
+        self.assertEqual(span["end_char"], len(prefix) + len(QUOTE) - 1)
+        self.assertEqual(span["quote"], "The delegation travels by motorcade to Hotel Arden")
 
     def test_existing_triage_quotes_are_used_without_resending(self):
         self.s1.sigs = signals(movement_details=0.5)
@@ -188,7 +196,7 @@ class CaseTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         grounded = response.json()
         self.assertEqual(grounded["active_version"]["decision"], case["active_version"]["decision"])
-        self.assertEqual(grounded["active_version"]["evidence_spans"][0]["quote"], QUOTE)
+        self.assertEqual(grounded["active_version"]["evidence_spans"][0]["quote"], QUOTE.rstrip("."))
         self.client.post(endpoint)
         self.assertEqual(len(self.s2.requests), 1)
 

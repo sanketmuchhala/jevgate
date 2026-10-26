@@ -5,11 +5,12 @@ import json
 from pathlib import Path
 import secrets
 import httpx
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from typesafe_sdk import AsyncTypeSafeClient, RetryPolicy
 from .config import Settings
+from .audit_schemas import AuditEvent, ReviewerIdentity
 from .cases import CaseService
 from .policy import load_policy
 from .questions import BATTERY
@@ -89,6 +90,15 @@ def create_app(
                 raise HTTPException(401, "A valid bearer token is required", headers={"WWW-Authenticate": "Bearer"})
 
     cases_api = APIRouter(prefix="/v1", dependencies=[Depends(authorize)])
+
+    @cases_api.get("/reviewers", response_model=list[ReviewerIdentity])
+    async def get_reviewers(request: Request):
+        return request.app.state.case_store.list_reviewers()
+
+    @cases_api.get("/cases/{case_id}/audit", response_model=list[AuditEvent])
+    async def get_audit(case_id: str, request: Request, version: int | None = Query(default=None, ge=1),
+                        limit: int = Query(default=100, ge=1, le=200), offset: int = Query(default=0, ge=0)):
+        return request.app.state.case_store.list_audit_events(case_id, version=version, limit=limit, offset=offset)
 
     @cases_api.post("/cases", response_model=CaseDetail, status_code=201)
     async def post_case(body: CaseCreateRequest, request: Request):

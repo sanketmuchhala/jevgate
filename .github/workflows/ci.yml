@@ -1,0 +1,47 @@
+name: Tests and offline evaluation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Python suite (warnings are errors)
+        run: python -W error -m unittest discover -s tests -t .
+      - name: Offline corpus evaluation
+        run: python scripts/evaluate.py --offline --out outputs/evaluation.json
+      - name: Upload evaluation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-evaluation
+          path: outputs/evaluation.json
+          if-no-files-found: error
+
+  system-two:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: system2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: system2/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
