@@ -125,7 +125,7 @@ curl -s localhost:8000/v1/triage -H 'content-type: application/json' \
 | `GET /healthz` | Model, policy version, whether System-2 is configured. |
 | `GET /docs` | OpenAPI UI. |
 
-Open <http://localhost:8000/app/> for the reviewer workbench. It supports case creation, explicit submission context, evidence highlighting, revision comparison, assignment, and rule dispositions. The top bar stores the reviewer name locally; the optional API token is kept in session storage.
+Open <http://localhost:8000/app/> for the reviewer workbench. It supports case creation, explicit submission context, evidence highlighting, revision comparison, assignment, rule dispositions, and each case's audit trail. The top bar stores the reviewer name locally and suggests names already recorded in audit history; the optional API token is kept in session storage.
 
 ### Case workflow and persistence
 
@@ -162,7 +162,7 @@ A revision carries prior overrides and waivers forward if its document hash is i
 
 Set `JEVGATE_API_TOKEN` to require `Authorization: Bearer <token>` for case, sample, reviewer, and audit endpoints. Reviewer names remain **self-declared**: the shared token grants access but does not authenticate an individual or enforce office roles. The directory lists names recorded in review/assignment history, not user accounts. Audit events include actor, version, timestamp, and action payload; creation events contain the document hash, not a duplicate document. They are read-only through the API, but the database is not a tamper-proof audit system.
 
-For backward compatibility, `/v1/triage`, `/v1/policy`, `/v1/questions`, `/healthz`, and static assets remain outside this optional token check. Deployments needing authentication on every endpoint must enforce it at their gateway. The workbench currently uses its local reviewer field; the new reviewer and audit endpoints are available to API clients.
+For backward compatibility, `/v1/triage`, `/v1/policy`, `/v1/questions`, `/healthz`, and static assets remain outside this optional token check. Deployments needing authentication on every endpoint must enforce it at their gateway. The workbench shows each case's audit trail from these endpoints and states that reviewer names are self-declared.
 
 ### 3. Samples and latency
 
