@@ -97,6 +97,16 @@ Jev can also be reached through OpenRouter with the same SDK; `.env.example` sho
 
 ### 2. Run
 
+To try the workbench without API keys or model calls:
+
+```bash
+.venv/bin/python scripts/demo_server.py --seed   # open http://127.0.0.1:8000/app/
+```
+
+The demo seeds eight cases from the evaluation corpus. Decisions are labelled `demo:corpus-replay` for corpus documents or `demo:keyword-heuristic` for other text, so they are distinguishable from Jev output. These replayed and heuristic answers demonstrate the workflow; they do not measure model quality. Cases are kept in memory by default; use `--db outputs/demo.sqlite3` to retain them.
+
+To run with configured model providers instead:
+
 ```bash
 (cd system2 && npm start)                    # System-2 reviewer on :8787 (optional)
 .venv/bin/uvicorn src.app:app --port 8000    # JevGate on :8000
@@ -171,7 +181,10 @@ For backward compatibility, `/v1/triage`, `/v1/policy`, `/v1/questions`, `/healt
 .venv/bin/python -W error -m unittest discover -s tests -t .
 (cd system2 && npm test && npm run typecheck)
 .venv/bin/python scripts/evaluate.py --offline --out outputs/evaluation.json
+node tests/e2e/workbench.e2e.mjs --screenshots outputs/e2e-shots
 ```
+
+The browser test starts its own no-key Python demo server and drives headless Chrome. It requires Node 22+ and Chrome, with no npm dependencies. Set `PYTHON` to choose a Python executable (for example, `PYTHON=python` in CI) or `CHROME_PATH` if Chrome is not found automatically. Missing Chrome skips the local run and fails the run when `CI` is set.
 
 The Python tests cover:
 
@@ -189,7 +202,7 @@ The Python tests cover:
 
 The Jev adapter tests drive the real TypeSafe SDK against a mock HTTP transport, so the wire format is tested too. The TypeScript tests use the AI SDK's `MockLanguageModelV4`. All tests and offline evaluation run without provider credentials.
 
-`.github/workflows/ci.yml` runs the Python suite with warnings treated as errors, the System-2 tests and type checker, and the offline evaluator on pushes and pull requests. It uploads the evaluator's JSON report as an artifact.
+`.github/workflows/ci.yml` runs the Python suite with warnings treated as errors, the System-2 tests and type checker, the offline evaluator, and a separate workbench browser job on pushes and pull requests. It uploads the evaluator's JSON report as an artifact and browser screenshots when the browser job fails.
 
 The 24-document corpus includes clear positives, internal short-circuits, ambiguous boundaries, and adversarial/negated statements. Offline evaluation replays hand-authored model answers through triage: it measures gate behavior, not live model quality, case context floors, or human review. The current replay reports hybrid verdict accuracy of 18/24 versus 14/24 for fast mode, with one high-stakes false negative in each mode and a grounded-but-misleading quote. These deliberate failure examples are not a passing accuracy threshold; CI checks that evaluation executes, while unit tests check its metrics. Use `--live` with configured services for model-backed evaluation; do not interpret offline figures as calibration evidence.
 
@@ -217,8 +230,10 @@ system2/            TypeScript reviewer: Vercel AI SDK 7, zod schema, OpenRouter
 samples/            6 sample documents and a 24-document labelled evaluation corpus
 scripts/run_samples.py  verdict table and latency report against a running server
 scripts/evaluate.py     offline replay or live evaluation, with JSON metrics
+scripts/demo_server.py  no-key demo with corpus replay and keyword heuristics
 tests/              offline Python tests
-.github/workflows/ci.yml  both suites, type checking, and offline evaluation
+tests/e2e/workbench.e2e.mjs  browser workflow checks against the demo server
+.github/workflows/ci.yml  Python, System-2, offline evaluation, and browser checks
 ```
 
 All names, countries, and organizations in `samples/` and `tests/` are fictional.

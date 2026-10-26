@@ -1,5 +1,4 @@
 from __future__ import annotations
-import re
 import time
 import uuid
 from collections.abc import Mapping
@@ -50,11 +49,6 @@ def build_propositions(policy: Policy, rules: list[RuleResult], open_stakes: Map
         )
         for cid in open_stakes
     ]
-
-
-def _normalize(text: str) -> str:
-    text = text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
-    return re.sub(r"\s+", " ", text).strip().casefold()
 
 
 def is_grounded(evidence: str, document: str) -> bool:
