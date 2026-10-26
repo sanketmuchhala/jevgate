@@ -1,6 +1,7 @@
 'use strict';
 
-// JevGate Reviewer Workbench: a single page over the /v1/cases contract in src/workbench_schemas.py.
+// JevGate Reviewer Workbench: a single page over the /v1/cases contract in src/workbench_schemas.py
+// and the audit contract in src/audit_schemas.py.
 // No build step and no dependencies. Document and model text is always inserted as text nodes,
 // never as HTML, so a document cannot inject markup into the page.
 
@@ -119,6 +120,8 @@ const state = {
   current: null,
   editing: false,
   serverSamples: [],
+  audit: { caseId: null, events: [], status: 'idle', error: null, truncated: false },
+  auditVersionOnly: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -166,9 +169,9 @@ const fixed = value => clamp01(value).toFixed(2);
 const shortId = id => String(id).slice(0, 8);
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
-function formatDate(iso) {
+function formatDate(iso, timeStyle = 'short') {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? String(iso || '') : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(date.getTime()) ? String(iso || '') : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle });
 }
 
 const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -327,6 +330,23 @@ function requireIdentity() {
     return null;
   }
   return id;
+}
+
+// Names already recorded in audit history, offered as suggestions for the handle and assignee fields.
+async function refreshReviewers() {
+  let reviewers;
+  try {
+    reviewers = await api(`${API}/reviewers`);
+  } catch {
+    return; // suggestions are a convenience; the fields work without them
+  }
+  const offices = new Map();
+  for (const r of Array.isArray(reviewers) ? reviewers : []) {
+    if (!offices.has(r.reviewer)) offices.set(r.reviewer, []);
+    if (r.office) offices.get(r.reviewer).push(r.office);
+  }
+  $('#reviewer-options').replaceChildren(...[...offices].map(([name, list]) =>
+    h('option', { value: name, label: list.length ? `${name} · ${list.join(', ')}` : name })));
 }
 
 // ---------------------------------------------------------------------------
@@ -491,6 +511,7 @@ function showCase(detail) {
   syncHash(detail);
   renderCase();
   renderQueue();
+  refreshAudit(detail.case_id);
   if (changedCase) $('#case-view').scrollTop = 0;
 }
 
@@ -784,6 +805,7 @@ function rulesPane(c, v, isCurrent) {
       h('p', { class: 'hint' }, 'One confident FALSE settles a rule, so uncertainty elsewhere in it cannot change the outcome.'),
       cleared.map(rule => ruleCard(c, v, rule, false))),
     caseControls(c, v, isCurrent),
+    auditSection(c, v),
     signalsTable(v.decision));
   pane.addEventListener('click', event => {
     if (event.target.closest('button, a, input, select, textarea, label, summary, form, mark')) return;
@@ -942,6 +964,7 @@ function dispositionForm(c, v, rule, record) {
         casePath(c.case_id, `/versions/${v.version_number}/rules/${encodeURIComponent(rule.rule_id)}`), { method: 'PATCH', body }));
       showCase(detail);
       refreshQueue();
+      refreshReviewers();
       toast(`${rule.rule_id}: ${DISPOSITIONS[body.disposition].label.toLowerCase()} recorded.`, 'success');
     } catch (error) {
       toast(error.message, 'error');
@@ -958,7 +981,10 @@ function caseControls(c, v, isCurrent) {
   const decided = records.filter(r => r.disposition !== 'PENDING').length;
   const office = h('select', { name: 'assigned_office' });
   fillOfficeSelect(office, { none: 'Unassigned', selected: c.assigned_office || '' });
-  const reviewer = h('input', { name: 'assigned_reviewer', maxlength: '120', value: c.assigned_reviewer || '', placeholder: 'Reviewer handle' });
+  const reviewer = h('input', {
+    name: 'assigned_reviewer', maxlength: '120', value: c.assigned_reviewer || '', placeholder: 'Reviewer handle',
+    list: 'reviewer-options', autocomplete: 'off',
+  });
   const note = h('input', { name: 'note', maxlength: '1000', placeholder: 'Optional note for the audit log' });
 
   const patch = async (button, body, done) => {
@@ -970,6 +996,7 @@ function caseControls(c, v, isCurrent) {
       }));
       showCase(detail);
       refreshQueue();
+      refreshReviewers();
       toast(done, 'success');
     } catch (error) {
       toast(error.message, 'error');
@@ -1033,6 +1060,145 @@ function signalsTable(decision) {
         h('th', { scope: 'row' }, h('code', {}, qid), h('span', { class: 'signal-type' }, signal.type)),
         h('td', {}, value(signal)),
         h('td', {}, fixed(signal.confidence)))))));
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail
+// ---------------------------------------------------------------------------
+
+const AUDIT_PAGE = 200; // the API's largest page
+const AUDIT_MAX_PAGES = 5;
+const SYSTEM_ACTORS = { submitter: 'Submitter', system_two: 'System-2' };
+let auditTicket = 0;
+
+async function refreshAudit(caseId) {
+  const ticket = ++auditTicket;
+  if (state.audit.caseId !== caseId) {
+    state.audit = { caseId, events: [], status: 'loading', error: null, truncated: false };
+    renderAudit();
+  }
+  const events = [];
+  let truncated = false;
+  try {
+    for (let page = 1; ; page += 1) {
+      const batch = await api(casePath(caseId, `/audit?limit=${AUDIT_PAGE}&offset=${events.length}`));
+      events.push(...batch);
+      if (batch.length < AUDIT_PAGE) break;
+      if (page === AUDIT_MAX_PAGES) { truncated = true; break; }
+    }
+  } catch (error) {
+    if (ticket !== auditTicket) return;
+    state.audit = { ...state.audit, status: 'error', error };
+    renderAudit();
+    return;
+  }
+  if (ticket !== auditTicket) return; // a newer request, possibly for another case, owns the panel
+  state.audit = { caseId, events, status: 'ready', error: null, truncated };
+  renderAudit();
+}
+
+// Replaced in place: re-rendering the whole case would discard a half-written rationale.
+function renderAudit() {
+  const section = document.getElementById('audit-trail');
+  if (section && state.current) section.replaceWith(auditSection(state.current, state.current.active_version));
+}
+
+function auditSection(c, v) {
+  const audit = state.audit.caseId === c.case_id ? state.audit : { status: 'loading', events: [] };
+  const shown = audit.events.filter(e => !state.auditVersionOnly || e.version_number === v.version_number).reverse();
+  const toggle = h('input', {
+    type: 'checkbox', name: 'audit_version_only', checked: state.auditVersionOnly,
+    onchange: event => {
+      state.auditVersionOnly = event.target.checked;
+      renderAudit();
+      $('#audit-trail [name=audit_version_only]')?.focus();
+    },
+  });
+  let body;
+  if (!audit.events.length && audit.status === 'loading') body = h('p', { class: 'hint' }, 'Loading history…');
+  else if (!shown.length) body = h('p', { class: 'hint' }, audit.events.length ? `No events for v${v.version_number}.` : 'No events recorded.');
+  else body = h('ol', { class: 'audit-list' }, shown.map(event => auditItem(c, v, event)));
+  return h('section', { class: 'audit', id: 'audit-trail', 'aria-labelledby': 'audit-heading' },
+    h('div', { class: 'audit-head' },
+      h('h4', { id: 'audit-heading' }, 'Audit trail'),
+      audit.events.length > 0 && h('span', { class: 'hint audit-count' }, shown.length === audit.events.length
+        ? plural(audit.events.length, 'event') : `${shown.length} of ${plural(audit.events.length, 'event')}`),
+      c.current_version > 1 && h('label', { class: 'check' }, toggle, h('span', {}, `Only v${v.version_number}`))),
+    h('p', { class: 'hint' }, 'Newest first. Reviewer names are self-declared: the API token is shared and does not identify a person.'),
+    audit.status === 'error' && h('p', { class: 'notice', role: 'alert' }, `History unavailable: ${audit.error.message} `,
+      h('button', { type: 'button', class: 'link', onclick: () => refreshAudit(c.case_id) }, 'Retry')),
+    audit.truncated && h('p', { class: 'hint' }, `Only the oldest ${audit.events.length.toLocaleString()} events were loaded.`),
+    body);
+}
+
+function auditItem(c, v, event) {
+  const viewing = event.version_number === v.version_number;
+  const { title, detail } = describeAuditEvent(event, viewing);
+  const office = event.event_type === 'RULE_DISPOSITION_UPDATED' && event.payload?.office;
+  const version = viewing
+    ? h('span', { class: 'version-chip', title: 'The version you are viewing' }, `v${event.version_number}`)
+    : h('button', {
+      type: 'button', class: 'version-chip version-link', title: `View v${event.version_number}`,
+      onclick: () => navigate(c.case_id, event.version_number === c.current_version ? null : event.version_number),
+    }, `v${event.version_number}`);
+  return h('li', { class: `audit-event audit-${event.event_type}`, dataset: { eventType: event.event_type } },
+    h('div', { class: 'audit-line' }, h('span', { class: 'audit-what' }, title), version),
+    h('p', { class: 'audit-meta' },
+      h('span', { class: 'audit-actor' }, SYSTEM_ACTORS[event.actor] || event.actor || 'Unknown'),
+      office && ` (${office})`, ' · ',
+      h('time', { datetime: event.created_at, title: event.created_at }, formatDate(event.created_at, 'medium'))),
+    detail);
+}
+
+// Payload keys per event type follow src/cases.py. Unknown types still render, as their scalar fields.
+function describeAuditEvent(event, viewing) {
+  const p = event.payload || {};
+  const sha = p.document_sha256 ? `SHA-256 ${String(p.document_sha256).slice(0, 12)}…` : null;
+  const detail = (...parts) => h('p', { class: 'audit-detail' }, parts);
+  switch (event.event_type) {
+    case 'CASE_CREATED':
+      return { title: 'Case submitted', detail: sha && detail(sha) };
+    case 'VERSION_CREATED':
+      return {
+        title: `Revision v${event.version_number} submitted`,
+        detail: detail([p.previous_version && `Replaces v${p.previous_version}`, sha].filter(Boolean).join(' · ')),
+      };
+    case 'RULE_DISPOSITION_UPDATED': {
+      const rule = viewing
+        ? h('button', { type: 'button', class: 'link rule-id', onclick: () => focusRuleCard(p.rule_id) }, p.rule_id)
+        : h('span', { class: 'rule-id' }, p.rule_id);
+      return {
+        title: [rule, h('span', { class: `disp disp-${p.disposition}` }, DISPOSITION_LABELS[p.disposition] || p.disposition)],
+        detail: p.rationale && h('p', { class: 'disposition-rationale' }, p.rationale),
+      };
+    }
+    case 'EVIDENCE_GROUNDED': {
+      const ids = p.condition_ids || [];
+      return {
+        title: 'Quotes requested from System-2',
+        detail: detail(ids.length ? ['Conditions with a quote: ', ids.map((id, i) => [i ? ', ' : '', h('code', {}, id)])]
+          : 'No condition has a quote yet.'),
+      };
+    }
+    case 'CASE_UPDATED': {
+      const parts = [];
+      if (p.status === 'CHANGES_REQUESTED') parts.push('Changes requested');
+      else if (p.status === 'OPEN') parts.push('Case reopened');
+      else if (p.status) parts.push(`Status set to ${STATUS_LABELS[p.status] || p.status}`);
+      if ('assigned_office' in p || 'assigned_reviewer' in p) {
+        const to = [p.assigned_office, p.assigned_reviewer].filter(Boolean).join(' · ');
+        parts.push(to ? `Assigned to ${to}` : 'Assignment cleared');
+      }
+      return { title: parts.join('; ') || 'Case updated', detail: p.note && h('p', { class: 'disposition-rationale' }, p.note) };
+    }
+    default: {
+      const fields = Object.entries(p).filter(([, value]) => value !== null && typeof value !== 'object');
+      return {
+        title: h('code', {}, event.event_type),
+        detail: fields.length > 0 && detail(fields.map(([key, value]) => `${key}: ${value}`).join(' · ')),
+      };
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1139,6 +1305,7 @@ function setupDialogs() {
     event.target.reset();
     refreshQueue();
     loadServerSamples();
+    refreshReviewers();
     if (state.current) loadCase(state.current.case_id, null);
   });
 }
@@ -1202,7 +1369,7 @@ async function init() {
   setupDialogs();
   setupNewCase();
   await loadReference();
-  await Promise.all([refreshQueue(), loadServerSamples()]);
+  await Promise.all([refreshQueue(), loadServerSamples(), refreshReviewers()]);
   window.addEventListener('hashchange', openFromHash);
   openFromHash();
 }

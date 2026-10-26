@@ -21,8 +21,10 @@
     <form class="identity" id="identity-form" aria-label="Reviewer identity">
       <label class="field inline">
         <span>Reviewer handle</span>
-        <input id="reviewer-handle" name="reviewer" autocomplete="username" maxlength="120" placeholder="e.g. a.quist" required>
+        <input id="reviewer-handle" name="reviewer" list="reviewer-options" autocomplete="off" maxlength="120"
+               placeholder="e.g. a.quist" title="Self-declared and recorded with each action; not verified" required>
       </label>
+      <datalist id="reviewer-options"></datalist>
       <label class="field inline">
         <span>Acting office</span>
         <select id="acting-office" name="office"></select>

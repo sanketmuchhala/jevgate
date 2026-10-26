@@ -136,7 +136,7 @@ const LOW_CONTRAST = `
   const bg = el => { while (el) { const c = getComputedStyle(el).backgroundColor; if (c !== 'transparent' && !c.startsWith('rgba(0, 0, 0, 0)')) return c; el = el.parentElement; } return 'rgb(255, 255, 255)'; };
   const ratio = el => { const a = lum(getComputedStyle(el).color), b = lum(bg(el)); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
   const selectors = ['.rule-title', '.rule-id', '.acting-as', '.proposition', '.rule-meta', '.case-sub', '.hint', '.prob-scale span',
-    '.condition-id', '.s2-rationale', '.kicker', '.case-item-meta', '.verdict-label'];
+    '.condition-id', '.s2-rationale', '.kicker', '.case-item-meta', '.verdict-label', '.audit-meta', '.audit-actor', '.audit-detail'];
   return selectors.map(s => [s, document.querySelector(s)]).filter(([, el]) => el).map(([s, el]) => [s, Math.round(ratio(el) * 10) / 10]).filter(([, r]) => r < 4.5);
 `;
 
@@ -184,7 +184,7 @@ try {
 
   console.log('blocked case');
   await goto(`/app/#case=${caseId(TITLES.aideMemoire)}`);
-  await waitFor(`document.querySelector('#rule-P1')`, 'P1 card');
+  await waitFor(`document.querySelector('#rule-P1') && document.querySelector('#audit-trail .audit-event')`, 'P1 card and audit trail');
   check(await js(`return [...document.querySelector('#case-view').childNodes].every(n => n.nodeType !== 3 || !n.textContent.trim());`), 'no stray text in the case view');
   const lowLight = await js(LOW_CONTRAST);
   check(lowLight.length === 0, 'light theme: key text meets 4.5:1 contrast', JSON.stringify(lowLight));
@@ -199,6 +199,12 @@ try {
   await waitFor(`document.querySelector('.case-head .status')?.textContent.includes('Blocked (final)')`, 'BLOCKED_FINAL');
   check((await js(`return document.querySelector('#rule-P1 .disposition-current').textContent;`)).startsWith('Finding accepted by a.quist (security_desk)'), 'accepting a BLOCK finding blocks the case for good');
   check(await waitFor(`[...document.querySelectorAll('#case-list .status')].some(s => s.textContent.includes('Blocked (final)'))`, 'queue refresh'), 'queue reflects the derived status');
+  await waitFor(`document.querySelectorAll('#audit-trail .audit-event').length === 2`, 'audit after disposition');
+  const blockedTrail = await js(`return [...document.querySelectorAll('#audit-trail .audit-event')].map(e => ({ type: e.dataset.eventType, what: e.querySelector('.audit-what').textContent, meta: e.querySelector('.audit-meta').textContent, text: e.textContent }));`);
+  check(blockedTrail[0].type === 'RULE_DISPOSITION_UPDATED' && blockedTrail[0].what === 'P1Finding accepted' && blockedTrail[0].meta.startsWith('a.quist (security_desk) · ')
+    && blockedTrail[0].text.includes('Route and hotel must not go to the ministry.'), 'audit trail records the disposition, newest first', JSON.stringify(blockedTrail[0]));
+  check(blockedTrail[1].type === 'CASE_CREATED' && blockedTrail[1].what === 'Case submitted' && blockedTrail[1].meta.startsWith('Submitter · '), 'audit trail starts with the submission', JSON.stringify(blockedTrail[1]));
+  check(await waitFor(`[...document.querySelectorAll('#reviewer-options option')].some(o => o.value === 'a.quist')`, 'reviewer suggestions'), 'recorded reviewers are offered as handle suggestions');
 
   console.log('open uncertainty');
   await goto(`/app/#case=${caseId(TITLES.trade)}`);
@@ -206,6 +212,7 @@ try {
   check(await js(`return document.querySelector('.alert-banner h3').textContent;`) === 'Escalated to a person', 'escalation banner');
   check(await js(`return document.querySelector('#rule-P3 [data-condition-id="external_audience"] .s2-verdict').textContent;`) === 'cannot determine', 'System-2 cannot_determine is shown');
   check(await js(`return document.querySelector('#rule-P3 [data-condition-id="external_audience"] .resolved').textContent;`) === 'Unresolved', 'open condition is marked unresolved');
+  check(await js(`document.querySelector('#rule-P3 [name=rationale]').value = 'half-written'; await refreshAudit(state.current.case_id); return document.querySelector('#rule-P3 [name=rationale]').value;`) === 'half-written', 'reloading the audit trail keeps a half-written rationale');
   await js(`document.querySelector('.alert-banner .link').click(); return true;`);
   await sleep(120);
   check(await js(`return document.querySelector('.rules-pane .pulse') !== null;`), 'escalation link locates the rule');
@@ -251,6 +258,20 @@ try {
   check(await js(`return document.querySelector('.case-head .version-chip').textContent;`) === 'v1 of 3', 'older versions are labelled');
   check(await js(`return document.querySelectorAll('.disposition-form, .case-controls').length;`) === 0, 'older versions are read-only');
   check(await js(`return location.hash;`) === `#case=${newCase}&v=1`, 'versions are deep-linkable');
+  await waitFor(`document.querySelectorAll('#audit-trail .audit-event').length === 5`, 'five audit events');
+  const typesShown = () => js(`return [...document.querySelectorAll('#audit-trail .audit-event')].map(e => e.dataset.eventType).join(' ');`);
+  check(await typesShown() === 'VERSION_CREATED VERSION_CREATED RULE_DISPOSITION_UPDATED EVIDENCE_GROUNDED CASE_CREATED', 'audit trail covers every version, newest first', await typesShown());
+  const revisionText = await js(`const [v3, , , grounded] = [...document.querySelectorAll('#audit-trail .audit-event')]; return [v3.querySelector('.audit-what').textContent, v3.querySelector('.audit-detail').textContent, grounded.querySelector('.audit-detail').textContent, grounded.querySelector('.audit-actor').textContent];`);
+  check(revisionText[0] === 'Revision v3 submitted' && revisionText[1].startsWith('Replaces v2 · SHA-256 ')
+    && revisionText[2] === 'Conditions with a quote: financial_commitment' && revisionText[3] === 'System-2', 'revision and quote events are described', JSON.stringify(revisionText));
+  await js(`document.querySelector('#audit-trail [name=audit_version_only]').click(); return true;`);
+  check(await typesShown() === 'RULE_DISPOSITION_UPDATED EVIDENCE_GROUNDED CASE_CREATED', 'the version filter keeps only v1 events', await typesShown());
+  check(await js(`return document.activeElement?.name;`) === 'audit_version_only', 'the version filter keeps keyboard focus');
+  await js(`document.querySelector('#audit-trail [name=audit_version_only]').click(); return true;`);
+  await js(`document.querySelector('#audit-trail').scrollIntoView(); return true;`);
+  await shot('05-audit');
+  await js(`[...document.querySelectorAll('#audit-trail .version-link')].find(b => b.textContent === 'v2').click(); return true;`);
+  check(await waitFor(`location.hash === '#case=${newCase}&v=2'`, 'v2 from the audit trail'), 'audit entries link to their version');
 
   console.log('case controls and filters');
   await goto(`/app/#case=${caseId(TITLES.ministry)}`);
@@ -260,6 +281,9 @@ try {
   await js(`[...document.querySelectorAll('.case-controls button')].find(b => b.textContent === 'Request changes').click(); return true;`);
   await waitFor(`document.querySelector('.case-head .status')?.textContent.includes('Changes requested')`, 'changes requested');
   check(await js(`return [...document.querySelectorAll('.case-controls button')].some(b => b.textContent === 'Reopen case');`), 'a case with requested changes can be reopened');
+  await waitFor(`document.querySelectorAll('#audit-trail .audit-event').length === 3`, 'audit after case controls');
+  const controlTrail = await js(`return [...document.querySelectorAll('#audit-trail .audit-event')].slice(0, 2).map(e => e.querySelector('.audit-what').textContent + ' | ' + e.querySelector('.audit-actor').textContent);`);
+  check(JSON.stringify(controlTrail) === JSON.stringify(['Changes requested | a.quist', 'Assigned to privacy_office · l.moreau | a.quist']), 'assignment and status changes are audited', JSON.stringify(controlTrail));
   const filter = (name, value) => js(`const f = document.querySelector('#filters'); const v = ${JSON.stringify(value)}; const el = f.elements[${JSON.stringify(name)}]; if (el.type === 'checkbox') el.checked = v; else el.value = v; f.dispatchEvent(new Event('change')); return document.querySelectorAll('#case-list .case-item').length;`);
   check(await filter('status', 'BLOCKED_FINAL') === 1, 'status filter');
   await filter('status', '');
@@ -280,9 +304,14 @@ try {
     const r = await fetch('/v1/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       title: '<img src=x onerror=alert(1)> Title', mode: 'hybrid',
       document: 'To: Ministry of Interior. <script>alert(2)</script><img src=x onerror=alert(3)> Motorcade route: north gate.' }) });
-    return (await r.json()).case_id;`);
+    const detail = await r.json();
+    const rule = Object.keys(detail.active_version.rule_dispositions)[0];
+    await fetch('/v1/cases/' + detail.case_id + '/versions/1/rules/' + rule, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      disposition: 'WAIVE_RISK', reviewer: '<b>mallory</b>', office: 'security_desk', rationale: '<img src=x onerror=alert(4)> waived' }) });
+    return detail.case_id;`);
   await goto(`/app/#case=${hostile}`);
-  await waitFor(`document.querySelector('.case-title')`, 'hostile case');
+  await waitFor(`document.querySelector('.case-title') && document.querySelectorAll('#audit-trail .audit-event').length === 2`, 'hostile case');
+  check(await js(`const e = document.querySelector('#audit-trail .audit-event'); return e.querySelector('.audit-actor').textContent === '<b>mallory</b>' && e.textContent.includes('<img src=x onerror=alert(4)> waived');`), 'markup in audit entries renders as text');
   check(await js(`return document.querySelectorAll('#case-view img, #case-view script, #case-list img').length;`) === 0, 'markup in titles and documents renders as text');
   check(await js(`return document.querySelector('#document-viewer').textContent.includes('<script>alert(2)</script>');`), 'document text is preserved literally');
 
@@ -291,14 +320,14 @@ try {
   await goto(`/app/#case=${caseId(TITLES.trade)}`);
   await waitFor(`document.querySelector('#rule-P3')`, 'phone');
   check(await js(`return document.documentElement.scrollWidth <= window.innerWidth;`), 'no horizontal scroll at 375 px');
-  await shot('05-phone');
+  await shot('06-phone');
   await setViewport(1440, 1000);
   await setScheme('dark');
   await goto(`/app/#case=${caseId(TITLES.trade)}`);
-  await waitFor(`document.querySelector('#rule-P3')`, 'dark');
+  await waitFor(`document.querySelector('#rule-P3') && document.querySelector('#audit-trail .audit-event')`, 'dark');
   const lowDark = await js(LOW_CONTRAST);
   check(lowDark.length === 0, 'dark theme: key text meets 4.5:1 contrast', JSON.stringify(lowDark));
-  await shot('06-dark');
+  await shot('07-dark');
 } catch (error) {
   failures.push(String(error.message || error));
   console.log(`  FAIL ${error.message || error}`);
